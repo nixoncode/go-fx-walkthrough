@@ -20,10 +20,10 @@ func main() {
 	fx.New(
 		fx.Provide(
 			NewHttpServer,
-			fx.Annotate(NewServerMux, fx.ParamTags(`name:"echo"`, `name:"hello"`)),
+			fx.Annotate(NewServerMux, fx.ParamTags(`group:"routes"`)),
 			zap.NewExample,
-			fx.Annotate(NewEchoHandler, fx.As(new(Route)), fx.ResultTags(`name:"echo"`)),
-			fx.Annotate(NewHelloHandler, fx.As(new(Route)), fx.ResultTags(`name:"hello"`)),
+			AsRoute(NewEchoHandler),
+			AsRoute(NewHelloHandler),
 		),
 		fx.Invoke(func(*http.Server) {}), // need to find out why we need this and if it's possible to avoid
 		fx.WithLogger(func(log *zap.Logger) fxevent.Logger {
@@ -68,10 +68,12 @@ func (h *EchoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func NewServerMux(route1, route2 Route) *http.ServeMux {
+func NewServerMux(routes []Route) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.Handle(route1.Pattern(), route1)
-	mux.Handle(route2.Pattern(), route2)
+
+	for _, route := range routes {
+		mux.Handle(route.Pattern(), route)
+	}
 	return mux
 }
 
@@ -110,4 +112,12 @@ func (h *HelloHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+}
+
+func AsRoute(f any) any {
+	return fx.Annotate(
+		f,
+		fx.As(new(Route)),
+		fx.ResultTags(`group:"routes"`),
+	)
 }
