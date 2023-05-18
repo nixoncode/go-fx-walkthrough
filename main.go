@@ -17,7 +17,7 @@ import (
 
 func main() {
 	fx.New(
-		fx.Provide(NewHttpServer, NewEchoHandler, NewServerMux, zap.NewExample),
+		fx.Provide(NewHttpServer, fx.Annotate(NewEchoHandler, fx.As(new(Route))), NewServerMux, zap.NewExample),
 		fx.Invoke(func(*http.Server) {}), // need to find out why we need this and if it's possible to avoid
 		fx.WithLogger(func(log *zap.Logger) fxevent.Logger {
 			return &fxevent.ZapLogger{Logger: log}
@@ -61,8 +61,18 @@ func (h *EchoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func NewServerMux(echo *EchoHandler) *http.ServeMux {
+func NewServerMux(route Route) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.Handle("/echo", echo)
+	mux.Handle(route.Pattern(), route)
 	return mux
+}
+
+type Route interface {
+	http.Handler
+
+	Pattern() string
+}
+
+func (*EchoHandler) Pattern() string {
+	return "/echo"
 }
