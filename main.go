@@ -9,19 +9,21 @@ import (
 	"context"
 	"fmt"
 	"go.uber.org/fx"
+	"io"
 	"net"
 	"net/http"
+	"os"
 )
 
 func main() {
 	fx.New(
-		fx.Provide(NewHttpServer),
+		fx.Provide(NewHttpServer, NewEchoHandler, NewServerMux),
 		fx.Invoke(func(*http.Server) {}), // need to find out why we need this and if it's possible to avoid
 	).Run()
 }
 
-func NewHttpServer(lc fx.Lifecycle) *http.Server {
-	srv := &http.Server{Addr: ":8080"}
+func NewHttpServer(lc fx.Lifecycle, mux *http.ServeMux) *http.Server {
+	srv := &http.Server{Addr: ":8080", Handler: mux}
 
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
@@ -40,4 +42,22 @@ func NewHttpServer(lc fx.Lifecycle) *http.Server {
 		},
 	})
 	return srv
+}
+
+type EchoHandler struct{}
+
+func NewEchoHandler() *EchoHandler {
+	return &EchoHandler{}
+}
+
+func (*EchoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if _, err := io.Copy(w, r.Body); err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, "Failed to handle request", err)
+	}
+}
+
+func NewServerMux(echo *EchoHandler) *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.Handle("/echo", echo)
+	return mux
 }
