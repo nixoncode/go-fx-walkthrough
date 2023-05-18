@@ -5,6 +5,8 @@
 // Time: 06:55
 package main
 
-func main() {
+import "go.uber.org/fx"
 
+func main() {
+	fx.New().Run()
 }
