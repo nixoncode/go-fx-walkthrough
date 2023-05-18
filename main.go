@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
 	"go.uber.org/zap"
@@ -17,7 +18,13 @@ import (
 
 func main() {
 	fx.New(
-		fx.Provide(NewHttpServer, fx.Annotate(NewEchoHandler, fx.As(new(Route))), NewServerMux, zap.NewExample),
+		fx.Provide(
+			NewHttpServer,
+			fx.Annotate(NewServerMux, fx.ParamTags(`name:"echo"`, `name:"hello"`)),
+			zap.NewExample,
+			fx.Annotate(NewEchoHandler, fx.As(new(Route)), fx.ResultTags(`name:"echo"`)),
+			fx.Annotate(NewHelloHandler, fx.As(new(Route)), fx.ResultTags(`name:"hello"`)),
+		),
 		fx.Invoke(func(*http.Server) {}), // need to find out why we need this and if it's possible to avoid
 		fx.WithLogger(func(log *zap.Logger) fxevent.Logger {
 			return &fxevent.ZapLogger{Logger: log}
@@ -61,9 +68,10 @@ func (h *EchoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func NewServerMux(route Route) *http.ServeMux {
+func NewServerMux(route1, route2 Route) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.Handle(route.Pattern(), route)
+	mux.Handle(route1.Pattern(), route1)
+	mux.Handle(route2.Pattern(), route2)
 	return mux
 }
 
@@ -75,4 +83,31 @@ type Route interface {
 
 func (*EchoHandler) Pattern() string {
 	return "/echo"
+}
+
+type HelloHandler struct {
+	log *zap.Logger
+}
+
+func NewHelloHandler(log *zap.Logger) *HelloHandler {
+	return &HelloHandler{log: log}
+}
+
+func (*HelloHandler) Pattern() string {
+	return "/hello"
+}
+
+func (h *HelloHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		h.log.Error("Failed to read request body", zap.Error(err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if _, err = fmt.Fprintf(w, "Hello, %s\n", body); err != nil {
+		h.log.Error("Failed to write response", zap.Error(err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 }
